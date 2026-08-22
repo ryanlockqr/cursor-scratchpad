@@ -27,11 +27,17 @@ export const MAX_INBOX_ITEMS = 500;
 export const DUMP_REL = ".cursor/scratchpad.md";
 /** Cursor rule — local to this machine. Visible in the tree; not committed. */
 const RULE_REL = ".cursor/rules/scratchpad.mdc";
-/** Cursor skill — local to this machine. Visible; not committed. */
-const SKILL_DIR_REL = ".cursor/skills/organize-scratchpad";
-const SKILL_REL = `${SKILL_DIR_REL}/SKILL.md`;
+const ORGANIZE_SKILL_DIR = ".cursor/skills/organize-scratchpad";
+const RULES_FROM_NOTES_SKILL_DIR = ".cursor/skills/rules-from-scratchpad";
+const ORGANIZE_SKILL_REL = `${ORGANIZE_SKILL_DIR}/SKILL.md`;
+const RULES_FROM_NOTES_SKILL_REL = `${RULES_FROM_NOTES_SKILL_DIR}/SKILL.md`;
 
-const EXCLUDE_MARKERS = [DUMP_REL, RULE_REL, `${SKILL_DIR_REL}/`];
+const EXCLUDE_MARKERS = [
+  DUMP_REL,
+  RULE_REL,
+  `${ORGANIZE_SKILL_DIR}/`,
+  `${RULES_FROM_NOTES_SKILL_DIR}/`,
+];
 const CHECKBOX_RE = /^- \[([ xX])\]\s+(.+?)(?:\s+<!--id:([^\s>]+)-->)?\s*$/;
 const FOOTER_RE = /_Last synced:\s*([^\s_]+)/;
 
@@ -79,11 +85,15 @@ export class SyncEngine {
     const root = this.resolveRoot();
     await fs.mkdir(path.dirname(path.join(root, DUMP_REL)), { recursive: true });
     await fs.mkdir(path.dirname(path.join(root, RULE_REL)), { recursive: true });
-    await fs.mkdir(path.dirname(path.join(root, SKILL_REL)), { recursive: true });
+    await fs.mkdir(path.dirname(path.join(root, ORGANIZE_SKILL_REL)), { recursive: true });
+    await fs.mkdir(path.dirname(path.join(root, RULES_FROM_NOTES_SKILL_REL)), {
+      recursive: true,
+    });
     await ensureLocalGitExclude(root);
     await seedFileIfMissing(path.join(root, DUMP_REL), renderDump(EMPTY_STATE));
-    await seedFileIfMissing(path.join(root, RULE_REL), renderRule());
-    await seedFileIfMissing(path.join(root, SKILL_REL), renderOrganizeSkill());
+    await atomicWrite(path.join(root, RULE_REL), renderRule());
+    await atomicWrite(path.join(root, ORGANIZE_SKILL_REL), renderOrganizeSkill());
+    await atomicWrite(path.join(root, RULES_FROM_NOTES_SKILL_REL), renderRulesFromNotesSkill());
   }
 
   public async readDump(): Promise<DumpState> {
@@ -241,7 +251,8 @@ function renderRule(): string {
     "- Those items are **not** the current task.",
     "- Do **not** switch to dump items unless the human asks.",
     "- Stay on the work in progress. Capture is handled by the Scratchpad extension sidebar.",
-    "- When asked to organize, triage, clean up, or prioritize the dump, use the `organize-scratchpad` skill.",
+    "- When asked to organize, triage, clean up, or prioritize the dump, use `/organize-scratchpad`.",
+    "- When asked to turn dump notes into Cursor rules, use `/rules-from-scratchpad`.",
     "",
   ].join("\n");
 }
@@ -254,6 +265,7 @@ function renderOrganizeSkill(): string {
     "  Triages and rewrites the project thought dump at .cursor/scratchpad.md.",
     "  Use when the user asks to organize, triage, clean up, prioritize, cluster,",
     "  or make sense of scratchpad / parked thoughts / the dump.",
+    "disable-model-invocation: true",
     "---",
     "",
     "# Organize Scratchpad",
@@ -279,7 +291,52 @@ function renderOrganizeSkill(): string {
     "",
     "- \"organize my scratchpad\"",
     "- \"triage the dump\"",
-    "- \"clean up parked thoughts\"",
+    "- `/organize-scratchpad`",
+    "",
+  ].join("\n");
+}
+
+function renderRulesFromNotesSkill(): string {
+  return [
+    "---",
+    "name: rules-from-scratchpad",
+    "description: >-",
+    "  Reads parked thoughts in .cursor/scratchpad.md and drafts Cursor rules for",
+    "  this repo. Use when the user asks to create rules from notes, turn the dump",
+    "  into rules, or mine scratchpad / parked thoughts for .cursor/rules.",
+    "disable-model-invocation: true",
+    "---",
+    "",
+    "# Rules from Scratchpad",
+    "",
+    "## When to use",
+    "",
+    "Only when invoked (`/rules-from-scratchpad`) or the human asks to create Cursor rules from parked thoughts. Do not invent a ruleset unprompted. Always ask which candidates to keep.",
+    "",
+    "## Instructions",
+    "",
+    "1. Read `.cursor/scratchpad.md` (open items matter; skip done unless relevant).",
+    "2. List existing `.cursor/rules/**/*.mdc`. Ignore `scratchpad.mdc` (dump guard). Do not write `AGENTS.md`, User Rules, or Team Rules — only **project** `.mdc` files.",
+    "3. Split notes into rule-shaped vs not. **Not rules:** one-off tasks, ideas, bugs, reminders, style-guide dumps. Prefer a linter over a style rule.",
+    "4. **Ask before writing.** Show a short numbered list of candidates (only rule-shaped notes). For each: one-line restatement, suggested `kebab-case.mdc` name, and a recommended apply type:",
+    "   - **Always Apply** (`alwaysApply: true`) — rare. Whole-repo agent behavior.",
+    "   - **Apply to Specific Files** (`alwaysApply: false` + `globs`) — matching paths.",
+    "   - **Apply Intelligently** (`alwaysApply: false` + `description`, no globs) — default.",
+    "   - **Apply Manually** (`alwaysApply: false`, no description, no globs) — `@`-mention only.",
+    "   Ask: which of these should become rules? Numbers, \"all\", \"none\", or a tweak (name / apply type) are fine.",
+    "   Use the ask-questions tool if available. Do not create files until they pick.",
+    "5. After they choose, create only those rules with `/create-rule` so frontmatter is valid `.mdc`.",
+    "   - Reference files with `@path` instead of pasting dump text.",
+    "   - Do not overwrite existing rules unless asked. Never overwrite `scratchpad.mdc`.",
+    "   - Do **not** git-exclude these files — they are version-controlled project rules.",
+    "6. Do not empty the dump. Optionally mark only chosen notes as done, preserving `<!--id:...-->`.",
+    "7. Tell them what you wrote, the apply type of each, and what stayed as tasks.",
+    "",
+    "## Examples",
+    "",
+    "- `/rules-from-scratchpad`",
+    "- \"create rules from my notes\"",
+    "- \"turn the dump into cursor rules\"",
     "",
   ].join("\n");
 }
