@@ -11,7 +11,7 @@ A Cursor sidebar for dumping stray ideas as you work. Chuck thoughts in. Stay on
 
 Mid-task ideas pull focus. Dump them here instead of chasing them. The agent is told not to chase the dump — and can triage it when you ask.
 
-Per project. The dump stays off git. A small rule and organize skill are seeded so the agent knows what to do.
+Per project, per machine. Anyone with the extension gets dump, rule, and skill locally. They stay off git, so people without the extension never see them.
 
 ## Usage
 
@@ -27,13 +27,13 @@ Command Palette: Quick Dump, Clear Dump.
 
 ## How it works
 
-| Path | Role |
-| --- | --- |
-| `.cursor/scratchpad.md` | Parked thoughts (hidden from explorer; off git) |
-| `.cursor/rules/scratchpad.mdc` | Don’t chase parked thoughts |
-| `.cursor/skills/organize-scratchpad/SKILL.md` | Triage the dump on request |
+| Path | Role | Local |
+| --- | --- | --- |
+| `.cursor/scratchpad.md` | Parked thoughts | Hidden in explorer; off git |
+| `.cursor/rules/scratchpad.mdc` | Don’t chase parked thoughts | Visible; off git |
+| `.cursor/skills/organize-scratchpad/SKILL.md` | Triage the dump on request | Visible; off git |
 
-The dump is a normal markdown file so the agent can read and rewrite it. Rule and skill can be committed if you want teammates to get the same agent behavior.
+All three are written when you open a folder with the extension. They go in `.git/info/exclude` (not `.gitignore`), so they stay on that machine. No extension → no files in the clone.
 
 ## Contributing
 

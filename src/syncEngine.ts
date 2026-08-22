@@ -23,14 +23,15 @@ export const EMPTY_STATE: DumpState = {
 export const MAX_ITEM_LENGTH = 2_000;
 export const MAX_INBOX_ITEMS = 500;
 
-/** Source of truth for parked thoughts. Hidden from explorer; sidebar + agent both use this file. */
+/** Source of truth for parked thoughts. Hidden from explorer; stays off git. */
 export const DUMP_REL = ".cursor/scratchpad.md";
-/** Stable Cursor rule — not rewritten on dump. */
+/** Cursor rule — local to this machine. Visible in the tree; not committed. */
 const RULE_REL = ".cursor/rules/scratchpad.mdc";
-/** Cursor skill for triage — not rewritten on dump. */
-const SKILL_REL = path.join(".cursor", "skills", "organize-scratchpad", "SKILL.md");
+/** Cursor skill — local to this machine. Visible; not committed. */
+const SKILL_DIR_REL = ".cursor/skills/organize-scratchpad";
+const SKILL_REL = `${SKILL_DIR_REL}/SKILL.md`;
 
-const EXCLUDE_MARKERS = [DUMP_REL];
+const EXCLUDE_MARKERS = [DUMP_REL, RULE_REL, `${SKILL_DIR_REL}/`];
 const CHECKBOX_RE = /^- \[([ xX])\]\s+(.+?)(?:\s+<!--id:([^\s>]+)-->)?\s*$/;
 const FOOTER_RE = /_Last synced:\s*([^\s_]+)/;
 
@@ -81,8 +82,8 @@ export class SyncEngine {
     await fs.mkdir(path.dirname(path.join(root, SKILL_REL)), { recursive: true });
     await ensureLocalGitExclude(root);
     await seedFileIfMissing(path.join(root, DUMP_REL), renderDump(EMPTY_STATE));
-    await atomicWrite(path.join(root, RULE_REL), renderRule());
-    await atomicWrite(path.join(root, SKILL_REL), renderOrganizeSkill());
+    await seedFileIfMissing(path.join(root, RULE_REL), renderRule());
+    await seedFileIfMissing(path.join(root, SKILL_REL), renderOrganizeSkill());
   }
 
   public async readDump(): Promise<DumpState> {
