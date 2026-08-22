@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.3] - 2026-08-23
+
+- Keep dump, rule, and skill per machine (local git exclude); dump stays hidden in explorer
+
 ## [0.1.2] - 2026-08-21
 
 - Slim marketplace README; move develop/release docs to CONTRIBUTING.md
