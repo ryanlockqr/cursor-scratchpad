@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.4] - 2026-08-23
+
+- Add `rules-from-scratchpad`: list dump notes, ask which to make project rules, then `/create-rule`
+- Slash-only organize/rules skills (`disable-model-invocation`)
+
 ## [0.1.3] - 2026-08-23
 
 - Keep dump, rule, and skill per machine (local git exclude); dump stays hidden in explorer

@@ -6,7 +6,7 @@
 npm install
 ```
 
-Press **F5** to launch an Extension Development Host. Open a folder, dump a thought, and confirm `.cursor/scratchpad.md` is hidden, the rule and skill are visible, and all three are listed in `.git/info/exclude`.
+Press **F5** to launch an Extension Development Host. Open a folder, dump a thought, and confirm `.cursor/scratchpad.md` is hidden, the rule and both skills are visible, and dump/rule/skills are listed in `.git/info/exclude`.
 
 ```bash
 npm run lint
@@ -18,8 +18,8 @@ npm run package
 After a version lands on `main`, tag it. GitHub Actions packages the VSIX, publishes to Open VSX, and attaches the build to the GitHub release.
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 Tag must match `package.json` `version`.
