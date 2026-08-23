@@ -14,8 +14,8 @@ import {
 type WebviewToExtension =
   | { type: "ready" }
   | { type: "dump"; text: string }
-  | { type: "toggleInbox"; id: string }
   | { type: "editInbox"; id: string; text: string }
+  | { type: "openNote"; id: string }
   | { type: "removeInbox"; id: string };
 
 export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -26,6 +26,8 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
   private syncing = false;
   private dumpWatcher: vscode.FileSystemWatcher | undefined;
   private reloadTimer: ReturnType<typeof setTimeout> | undefined;
+  private notePanel: vscode.WebviewPanel | undefined;
+  private notePanelId: string | undefined;
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -107,6 +109,9 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
     }
     this.dumpWatcher?.dispose();
     this.dumpWatcher = undefined;
+    this.notePanel?.dispose();
+    this.notePanel = undefined;
+    this.notePanelId = undefined;
   }
 
   private watchDump(): void {
@@ -165,8 +170,8 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       case "dump":
         await this.dumpThought(message.text);
         return;
-      case "toggleInbox":
-        await this.toggleInbox(message.id);
+      case "openNote":
+        this.openNotePanel(message.id);
         return;
       case "removeInbox":
         await this.removeInbox(message.id);
@@ -175,18 +180,6 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         await this.editInbox(message.id, message.text);
         return;
     }
-  }
-
-  private async toggleInbox(id: string): Promise<void> {
-    await this.reloadFromDisk();
-    const inbox = this.state.inbox.map((item) =>
-      item.id === id ? { ...item, done: !item.done } : item,
-    );
-    this.state = {
-      inbox,
-      updatedAt: new Date().toISOString(),
-    };
-    await this.writeToDisk();
   }
 
   private async removeInbox(id: string): Promise<void> {
@@ -231,15 +224,155 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
   }
 
   private postState(): void {
-    if (!this.view) {
+    if (this.view) {
+      void this.view.webview.postMessage({
+        type: "state",
+        state: this.state,
+        syncing: this.syncing,
+        hasWorkspace: this.engine.getRootSafe() !== undefined,
+      });
+    }
+    this.postNotePanel();
+  }
+
+  private openNotePanel(id: string): void {
+    const item = this.state.inbox.find((entry) => entry.id === id);
+    if (!item) {
       return;
     }
-    void this.view.webview.postMessage({
-      type: "state",
-      state: this.state,
-      syncing: this.syncing,
-      hasWorkspace: this.engine.getRootSafe() !== undefined,
+
+    const title = noteTitle(item.text);
+    if (this.notePanel) {
+      this.notePanelId = id;
+      this.notePanel.title = title;
+      this.notePanel.reveal(vscode.ViewColumn.Beside);
+      this.postNotePanel();
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      "scratchpad.note",
+      title,
+      vscode.ViewColumn.Beside,
+      { enableScripts: true, retainContextWhenHidden: true },
+    );
+    this.notePanel = panel;
+    this.notePanelId = id;
+    panel.webview.html = this.renderNotePanelHtml(panel.webview);
+    panel.onDidDispose(() => {
+      if (this.notePanel === panel) {
+        this.notePanel = undefined;
+        this.notePanelId = undefined;
+      }
     });
+    panel.webview.onDidReceiveMessage((message: unknown) => {
+      if (!isWebviewMessage(message)) {
+        return;
+      }
+      if (message.type === "editInbox") {
+        void this.editInbox(message.id, message.text);
+      }
+    });
+    this.postNotePanel();
+  }
+
+  private postNotePanel(): void {
+    if (!this.notePanel || !this.notePanelId) {
+      return;
+    }
+
+    const item = this.state.inbox.find((entry) => entry.id === this.notePanelId);
+    if (!item) {
+      this.notePanel.dispose();
+      return;
+    }
+
+    this.notePanel.title = noteTitle(item.text);
+    void this.notePanel.webview.postMessage({
+      type: "note",
+      id: item.id,
+      text: item.text,
+      syncing: this.syncing,
+    });
+  }
+
+  private renderNotePanelHtml(webview: vscode.Webview): string {
+    const nonce = getNonce();
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Note</title>
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 12px;
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    textarea {
+      flex: 1;
+      width: 100%;
+      resize: none;
+      border: 1px solid var(--vscode-input-border, transparent);
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      font-family: inherit;
+      font-size: inherit;
+      line-height: 1.45;
+      border-radius: 6px;
+      padding: 10px;
+      outline: none;
+    }
+    textarea:focus { border-color: var(--vscode-focusBorder); }
+    .bar { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--vscode-descriptionForeground); }
+    button {
+      border: none;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font: inherit;
+    }
+  </style>
+</head>
+<body>
+  <div class="bar"><span id="status">Note</span><button type="button" id="save">Save</button></div>
+  <textarea id="body" spellcheck="true"></textarea>
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi();
+    const body = document.getElementById("body");
+    const status = document.getElementById("status");
+    let noteId = "";
+    window.addEventListener("message", (event) => {
+      const data = event.data;
+      if (!data || data.type !== "note") return;
+      noteId = data.id;
+      if (document.activeElement !== body) body.value = data.text;
+      status.textContent = data.syncing ? "Saving…" : "This note only";
+    });
+    document.getElementById("save").addEventListener("click", () => {
+      if (!noteId) return;
+      vscode.postMessage({ type: "editInbox", id: noteId, text: body.value });
+    });
+    body.addEventListener("keydown", (event) => {
+      if (event.key === "s" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        document.getElementById("save").click();
+      }
+    });
+  </script>
+</body>
+</html>`;
   }
 
   private showError(error: unknown): void {
@@ -364,20 +497,16 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
 
     .item {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: 1fr auto;
       gap: 8px;
       align-items: start;
       padding: 7px 8px;
       border-radius: 6px;
+      cursor: pointer;
     }
 
     .item:hover {
       background: var(--vscode-list-hoverBackground);
-    }
-
-    .item.done .text {
-      text-decoration: line-through;
-      opacity: 0.55;
     }
 
     .text {
@@ -385,23 +514,6 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       line-height: 1.35;
       word-break: break-word;
       white-space: pre-wrap;
-      cursor: text;
-    }
-
-    textarea.note-edit {
-      width: 100%;
-      min-height: 64px;
-      max-height: 240px;
-      resize: vertical;
-      margin: 0;
-      border: 1px solid var(--vscode-focusBorder);
-      background: var(--vscode-input-background);
-      color: var(--vscode-input-foreground);
-      font-family: inherit;
-      font-size: inherit;
-      line-height: 1.4;
-      border-radius: 4px;
-      padding: 6px 8px;
     }
 
     .actions {
@@ -447,11 +559,6 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       font-size: 12px;
       line-height: 1.4;
     }
-
-    input[type="checkbox"] {
-      margin-top: 2px;
-      accent-color: var(--vscode-focusBorder);
-    }
   </style>
 </head>
 <body>
@@ -468,11 +575,11 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       <textarea
         id="dump"
         rows="3"
-        placeholder="A thought… paste a whole note if you want"
+        placeholder="A thought… or a ramble"
         autocomplete="off"
         spellcheck="true"
       ></textarea>
-      <p class="hint">Enter dumps it. Shift+Enter for a new line. Click a note to edit.</p>
+      <p class="hint">Enter dumps it. Shift+Enter for a new line. Click a note to open it.</p>
       <div class="inbox" id="inbox"></div>
     </section>
   </div>
@@ -499,17 +606,6 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       dumpInput.value = "";
     });
 
-    inboxEl.addEventListener("change", (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
-        return;
-      }
-      const id = target.getAttribute("data-id");
-      if (id) {
-        vscode.postMessage({ type: "toggleInbox", id });
-      }
-    });
-
     inboxEl.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) {
@@ -524,47 +620,14 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         }
         return;
       }
-      const textEl = target.closest(".text");
-      if (textEl instanceof HTMLElement && !textEl.querySelector("textarea")) {
-        const id = textEl.getAttribute("data-id");
-        const item = textEl.closest(".item");
-        if (id && item) {
-          startEdit(textEl, id);
+      const item = target.closest(".item");
+      if (item instanceof HTMLElement) {
+        const id = item.getAttribute("data-id");
+        if (id) {
+          vscode.postMessage({ type: "openNote", id });
         }
       }
     });
-
-    function startEdit(textEl, id) {
-      const current = textEl.textContent || "";
-      const editor = document.createElement("textarea");
-      editor.className = "note-edit";
-      editor.value = current;
-      textEl.replaceChildren(editor);
-      editor.focus();
-      editor.setSelectionRange(editor.value.length, editor.value.length);
-
-      const save = () => {
-        const next = editor.value.trim();
-        if (!next || next === current) {
-          textEl.textContent = current;
-          return;
-        }
-        vscode.postMessage({ type: "editInbox", id, text: editor.value });
-      };
-
-      editor.addEventListener("blur", save);
-      editor.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          textEl.textContent = current;
-          return;
-        }
-        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          editor.blur();
-        }
-      });
-    }
 
     window.addEventListener("message", (event) => {
       const data = event.data;
@@ -581,11 +644,6 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       statusEl.dataset.busy = payload.syncing ? "true" : "false";
       statusEl.textContent = payload.syncing ? "Saving…" : "Saved";
 
-      const editing = inboxEl.querySelector("textarea.note-edit");
-      if (editing && document.activeElement === editing) {
-        return;
-      }
-
       if (!state.inbox || state.inbox.length === 0) {
         inboxEl.innerHTML = '<div class="empty">Nothing here yet.</div>';
         return;
@@ -594,13 +652,23 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       inboxEl.innerHTML = state.inbox.map(renderItem).join("");
     }
 
+    function previewText(text) {
+      const lines = String(text).split("\\n");
+      let preview = lines.slice(0, 4).join("\\n");
+      if (preview.length > 180) {
+        preview = preview.slice(0, 180);
+      }
+      if (preview.length < String(text).length) {
+        preview += "…";
+      }
+      return preview;
+    }
+
     function renderItem(item) {
-      const done = item.done ? " done" : "";
-      const checked = item.done ? " checked" : "";
+      const preview = previewText(item.text);
       return (
-        '<div class="item' + done + '">' +
-          '<input type="checkbox" data-id="' + escapeAttr(item.id) + '"' + checked + ' />' +
-          '<div class="text" data-id="' + escapeAttr(item.id) + '">' + escapeHtml(item.text) + '</div>' +
+        '<div class="item" data-id="' + escapeAttr(item.id) + '">' +
+          '<div class="text">' + escapeHtml(preview) + '</div>' +
           '<div class="actions">' +
             '<button class="ghost" type="button" data-action="remove" data-id="' + escapeAttr(item.id) + '">Remove</button>' +
           '</div>' +
@@ -626,6 +694,11 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
   }
 }
 
+function noteTitle(text: string): string {
+  const line = text.split("\n")[0]?.trim() || "Note";
+  return line.length > 48 ? `${line.slice(0, 45)}…` : line;
+}
+
 function isWebviewMessage(value: unknown): value is WebviewToExtension {
   if (typeof value !== "object" || value === null || !("type" in value)) {
     return false;
@@ -642,7 +715,7 @@ function isWebviewMessage(value: unknown): value is WebviewToExtension {
         typeof (value as { id?: unknown }).id === "string" &&
         typeof (value as { text?: unknown }).text === "string"
       );
-    case "toggleInbox":
+    case "openNote":
     case "removeInbox":
       return typeof (value as { id?: unknown }).id === "string";
     default:
