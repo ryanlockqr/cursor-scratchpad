@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.7] - 2026-08-23
+
+- Seed `/brief-scratchpad`: short dump briefing, no rewrite
+- Seed `/update-scratchpad`: what’s in the dump, what to drop (asks first)
+
 ## [0.1.6] - 2026-08-23
 
 - Longer notes (100k), click to edit, paste markdown; dump is note blocks not checkboxes
