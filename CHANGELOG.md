@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.5] - 2026-08-23
+
+- Multi-line thought dump; shorter copy; say “thought dump” not “parked thoughts”
+
 ## [0.1.4] - 2026-08-23
 
 - Add `rules-from-scratchpad`: list dump notes, ask which to make project rules, then `/create-rule`

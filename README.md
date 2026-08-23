@@ -3,15 +3,9 @@
 [![Open VSX](https://img.shields.io/open-vsx/v/ryanlockqr/scratchpad)](https://open-vsx.org/extension/ryanlockqr/scratchpad)
 [![CI](https://github.com/ryanlockqr/cursor-scratchpad/actions/workflows/ci.yml/badge.svg)](https://github.com/ryanlockqr/cursor-scratchpad/actions/workflows/ci.yml)
 
-Park the thought. Keep coding.
+Dump the thought. Keep coding.
 
-A Cursor sidebar for dumping stray ideas as you work. Chuck thoughts in. Stay on the task. Ask the agent to organize the dump when you want.
-
-## Why
-
-Mid-task ideas pull focus. Dump them here instead of chasing them. The agent is told not to chase the dump — and can triage it when you ask.
-
-Per project, per machine. Anyone with the extension gets the dump, guard rule, and skills locally. They stay off git, so people without the extension never see them.
+Cursor moves fast, so extra thoughts show up mid-task. Put them in the thought dump so you don’t lose them — come back later, and the agent can read it when you ask.
 
 ## Usage
 
@@ -19,10 +13,10 @@ Open the Scratchpad icon in the activity bar.
 
 | You do | What happens |
 | --- | --- |
-| Type a thought, press **Enter** | Appends `- [ ]` to the dump |
+| Type a thought, press **Enter** | Adds it to the thought dump (`Shift+Enter` for a new line) |
 | Check or Remove | Mark done or drop it |
-| Ask `/organize-scratchpad` (or organize / triage the dump) | Uses the `organize-scratchpad` skill |
-| Ask `/rules-from-scratchpad` (or create rules from notes) | Uses the `rules-from-scratchpad` skill |
+| `/organize-scratchpad` | Triage the dump |
+| `/rules-from-scratchpad` | Pick notes to turn into project rules |
 
 Command Palette: Quick Dump, Clear Dump.
 
@@ -30,12 +24,12 @@ Command Palette: Quick Dump, Clear Dump.
 
 | Path | Role | Local |
 | --- | --- | --- |
-| `.cursor/scratchpad.md` | Parked thoughts | Hidden in explorer; off git |
-| `.cursor/rules/scratchpad.mdc` | Don’t chase parked thoughts | Visible; off git |
-| `.cursor/skills/organize-scratchpad/SKILL.md` | Triage the dump on request | Visible; off git |
-| `.cursor/skills/rules-from-scratchpad/SKILL.md` | Draft repo rules from dump notes | Visible; off git |
+| `.cursor/scratchpad.md` | Thought dump | Hidden in explorer; off git |
+| `.cursor/rules/scratchpad.mdc` | Don’t chase the thought dump | Visible; off git |
+| `.cursor/skills/organize-scratchpad/SKILL.md` | Triage the dump | Visible; off git |
+| `.cursor/skills/rules-from-scratchpad/SKILL.md` | Draft repo rules from notes | Visible; off git |
 
-These are written when you open a folder with the extension. They go in `.git/info/exclude` (not `.gitignore`). Rules the agent **creates from notes** live in `.cursor/rules/` as normal project files and can be committed.
+Written when you open a folder with the extension. Listed in `.git/info/exclude`, not `.gitignore`. Rules you create from notes are normal project files and can be committed.
 
 ## Contributing
 

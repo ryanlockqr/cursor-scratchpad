@@ -31,8 +31,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("scratchpad.quickDump", async () => {
       const text = await vscode.window.showInputBox({
         title: "Cursor Scratchpad",
-        prompt: "Park a thought.",
-        placeHolder: "that other idea I should not chase right now",
+        prompt: "Add to the thought dump.",
+        placeHolder: "that other idea",
         ignoreFocusOut: true,
       });
       if (text !== undefined) {
@@ -41,7 +41,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("scratchpad.clearDump", async () => {
       const choice = await vscode.window.showWarningMessage(
-        "Clear every parked thought in the dump?",
+        "Clear the thought dump?",
         { modal: true },
         "Clear dump",
       );
