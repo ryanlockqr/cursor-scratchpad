@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.9] - 2026-08-23
+
+- Each note is its own card; drop the “This note only” label; no horizontal scroll on the editor
+
 ## [0.1.8] - 2026-08-23
 
 - Click any note to edit it in a tab; long notes are truncated in the list
