@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.6] - 2026-08-23
+
+- Longer notes (100k), click to edit, paste markdown; dump is note blocks not checkboxes
+- TypeScript `moduleResolution` Node16
+
 ## [0.1.5] - 2026-08-23
 
 - Multi-line thought dump; shorter copy; say “thought dump” not “parked thoughts”
