@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.8] - 2026-08-23
+
+- Click any note to edit it in a tab; long notes are truncated in the list
+- Sidebar is notes + Remove only (no checkboxes)
+- Placeholder: “A thought… or a ramble”
+
 ## [0.1.7] - 2026-08-23
 
 - Seed `/brief-scratchpad`: short dump briefing, no rewrite
