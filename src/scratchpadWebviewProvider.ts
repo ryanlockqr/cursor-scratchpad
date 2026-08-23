@@ -306,7 +306,8 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Note</title>
   <style>
-    html, body { height: 100%; }
+    html, body { height: 100%; box-sizing: border-box; }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 12px;
@@ -317,11 +318,19 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       display: flex;
       flex-direction: column;
       gap: 8px;
+      overflow: hidden;
     }
     textarea {
       flex: 1;
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
       resize: none;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      word-break: break-word;
       border: 1px solid var(--vscode-input-border, transparent);
       background: var(--vscode-input-background);
       color: var(--vscode-input-foreground);
@@ -333,7 +342,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       outline: none;
     }
     textarea:focus { border-color: var(--vscode-focusBorder); }
-    .bar { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--vscode-descriptionForeground); }
+    .bar { display: flex; justify-content: flex-end; align-items: center; }
     button {
       border: none;
       background: var(--vscode-button-background);
@@ -346,21 +355,21 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
   </style>
 </head>
 <body>
-  <div class="bar"><span id="status">Note</span><button type="button" id="save">Save</button></div>
+  <div class="bar"><button type="button" id="save">Save</button></div>
   <textarea id="body" spellcheck="true"></textarea>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const body = document.getElementById("body");
-    const status = document.getElementById("status");
+    const save = document.getElementById("save");
     let noteId = "";
     window.addEventListener("message", (event) => {
       const data = event.data;
       if (!data || data.type !== "note") return;
       noteId = data.id;
       if (document.activeElement !== body) body.value = data.text;
-      status.textContent = data.syncing ? "Saving…" : "This note only";
+      save.textContent = data.syncing ? "Saving…" : "Save";
     });
-    document.getElementById("save").addEventListener("click", () => {
+    save.addEventListener("click", () => {
       if (!noteId) return;
       vscode.postMessage({ type: "editInbox", id: noteId, text: body.value });
     });
@@ -459,9 +468,16 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
 
     textarea {
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
       min-height: 72px;
       max-height: 180px;
       resize: vertical;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      word-break: break-word;
       border: 1px solid var(--vscode-input-border, transparent);
       background: var(--vscode-input-background);
       color: var(--vscode-input-foreground);
@@ -491,18 +507,19 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
     .inbox {
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      margin-top: 10px;
+      gap: 8px;
     }
 
     .item {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 8px;
       align-items: start;
-      padding: 7px 8px;
-      border-radius: 6px;
+      padding: 10px;
+      border-radius: 8px;
       cursor: pointer;
+      border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, transparent));
+      background: var(--vscode-input-background);
     }
 
     .item:hover {
@@ -580,8 +597,8 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         spellcheck="true"
       ></textarea>
       <p class="hint">Enter dumps it. Shift+Enter for a new line. Click a note to open it.</p>
-      <div class="inbox" id="inbox"></div>
     </section>
+    <div class="inbox" id="inbox"></div>
   </div>
 
   <script nonce="${nonce}">
