@@ -303,23 +303,27 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       padding: 10px;
     }
 
-    input[type="text"] {
+    textarea {
       width: 100%;
+      min-height: 72px;
+      max-height: 180px;
+      resize: vertical;
       border: 1px solid var(--vscode-input-border, transparent);
       background: var(--vscode-input-background);
       color: var(--vscode-input-foreground);
       font-family: inherit;
       font-size: inherit;
+      line-height: 1.4;
       border-radius: 6px;
       padding: 8px 10px;
       outline: none;
     }
 
-    input[type="text"]::placeholder {
+    textarea::placeholder {
       color: var(--vscode-input-placeholderForeground);
     }
 
-    input[type="text"]:focus {
+    textarea:focus {
       border-color: var(--vscode-focusBorder);
       box-shadow: 0 0 0 1px var(--vscode-focusBorder);
     }
@@ -359,6 +363,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       min-width: 0;
       line-height: 1.35;
       word-break: break-word;
+      white-space: pre-wrap;
     }
 
     .actions {
@@ -414,7 +419,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
 <body>
   <div class="stack">
     <div id="workspace-banner" class="banner" hidden>
-      Open a project folder. The dump is per-repo and stays off git.
+      Open a folder. Dump is per project.
     </div>
 
     <section class="card">
@@ -422,15 +427,15 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         <span class="label">Dump</span>
         <span class="status" id="status">Idle</span>
       </div>
-      <input
+      <textarea
         id="dump"
-        type="text"
         maxlength="2000"
-        placeholder="Park a thought and press Enter"
+        rows="3"
+        placeholder="A thought…"
         autocomplete="off"
         spellcheck="true"
-      />
-      <p class="hint">Dump as you work. Enter parks it. Ask the agent to organize when you want.</p>
+      ></textarea>
+      <p class="hint">Enter dumps it. Shift+Enter for a new line.</p>
       <div class="inbox" id="inbox"></div>
     </section>
   </div>
@@ -445,7 +450,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
     vscode.postMessage({ type: "ready" });
 
     dumpInput.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") {
+      if (event.key !== "Enter" || event.shiftKey) {
         return;
       }
       event.preventDefault();
@@ -500,7 +505,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       statusEl.textContent = payload.syncing ? "Saving…" : "Saved";
 
       if (!state.inbox || state.inbox.length === 0) {
-        inboxEl.innerHTML = '<div class="empty">Nothing dumped. Park a thought to get it out of your head.</div>';
+        inboxEl.innerHTML = '<div class="empty">Nothing here yet.</div>';
         return;
       }
 

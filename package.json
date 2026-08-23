@@ -1,8 +1,8 @@
 {
   "name": "scratchpad",
   "displayName": "Cursor Scratchpad",
-  "description": "Park stray thoughts while you code in Cursor. Agent stays on task; organize the dump when you ask.",
-  "version": "0.1.4",
+  "description": "A thought dump for Cursor. Catch ideas mid-task, revisit later; the agent can read them too.",
+  "version": "0.1.5",
   "publisher": "ryanlockqr",
   "license": "MIT",
   "icon": "media/icon.png",

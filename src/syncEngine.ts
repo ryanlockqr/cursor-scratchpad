@@ -23,7 +23,7 @@ export const EMPTY_STATE: DumpState = {
 export const MAX_ITEM_LENGTH = 2_000;
 export const MAX_INBOX_ITEMS = 500;
 
-/** Source of truth for parked thoughts. Hidden from explorer; stays off git. */
+/** Source of truth for the thought dump. Hidden from explorer; stays off git. */
 export const DUMP_REL = ".cursor/scratchpad.md";
 /** Cursor rule — local to this machine. Visible in the tree; not committed. */
 const RULE_REL = ".cursor/rules/scratchpad.mdc";
@@ -227,7 +227,7 @@ function renderDump(state: DumpState): string {
   return [
     "# Scratchpad",
     "",
-    "Parked thoughts for this project. Personal dump — not the current task.",
+    "Thought dump for this project. Not the current task.",
     "",
     renderInboxMarkdown(state.inbox),
     "",
@@ -239,13 +239,13 @@ function renderDump(state: DumpState): string {
 function renderRule(): string {
   return [
     "---",
-    "description: Parked thoughts live in .cursor/scratchpad.md. Do not chase them unless asked.",
+    "description: The thought dump lives in .cursor/scratchpad.md. Do not chase it unless asked.",
     "alwaysApply: true",
     "---",
     "",
     "# Scratchpad",
     "",
-    "The human parks stray thoughts in `.cursor/scratchpad.md` while working.",
+    "The human keeps a thought dump in `.cursor/scratchpad.md` while working.",
     "",
     "- That file is the source of truth for the dump.",
     "- Those items are **not** the current task.",
@@ -264,7 +264,7 @@ function renderOrganizeSkill(): string {
     "description: >-",
     "  Triages and rewrites the project thought dump at .cursor/scratchpad.md.",
     "  Use when the user asks to organize, triage, clean up, prioritize, cluster,",
-    "  or make sense of scratchpad / parked thoughts / the dump.",
+    "  or make sense of scratchpad / the thought dump.",
     "disable-model-invocation: true",
     "---",
     "",
@@ -272,7 +272,7 @@ function renderOrganizeSkill(): string {
     "",
     "## When to use",
     "",
-    "Only when the human asks to organize or triage parked thoughts. Do not run this unprompted mid-task.",
+    "Only when the human asks to organize or triage the thought dump. Do not run this unprompted mid-task.",
     "",
     "## Instructions",
     "",
@@ -284,7 +284,7 @@ function renderOrganizeSkill(): string {
     "   - Items as `- [ ]` / `- [x]` checkbox lines.",
     "   - Preserve trailing `<!--id:...-->` markers on lines that already have them.",
     "   - Optionally group open items under short subheadings (e.g. `#### Later`, `#### Bugs`) if that helps.",
-    "4. Do not invent new work. Do not expand parked thoughts into a new project plan unless asked.",
+    "4. Do not invent new work. Do not expand dump items into a new project plan unless asked.",
     "5. After rewriting, briefly tell the human what you changed (counts moved, removed, or grouped).",
     "",
     "## Examples",
@@ -301,9 +301,9 @@ function renderRulesFromNotesSkill(): string {
     "---",
     "name: rules-from-scratchpad",
     "description: >-",
-    "  Reads parked thoughts in .cursor/scratchpad.md and drafts Cursor rules for",
+    "  Reads the thought dump in .cursor/scratchpad.md and drafts Cursor rules for",
     "  this repo. Use when the user asks to create rules from notes, turn the dump",
-    "  into rules, or mine scratchpad / parked thoughts for .cursor/rules.",
+    "  into rules, or mine scratchpad / the thought dump for .cursor/rules.",
     "disable-model-invocation: true",
     "---",
     "",
@@ -311,7 +311,7 @@ function renderRulesFromNotesSkill(): string {
     "",
     "## When to use",
     "",
-    "Only when invoked (`/rules-from-scratchpad`) or the human asks to create Cursor rules from parked thoughts. Do not invent a ruleset unprompted. Always ask which candidates to keep.",
+    "Only when invoked (`/rules-from-scratchpad`) or the human asks to create Cursor rules from the thought dump. Do not invent a ruleset unprompted. Always ask which candidates to keep.",
     "",
     "## Instructions",
     "",
@@ -343,7 +343,7 @@ function renderRulesFromNotesSkill(): string {
 
 function renderInboxMarkdown(inbox: readonly InboxItem[]): string {
   if (inbox.length === 0) {
-    return "_Nothing dumped yet._";
+    return "_Nothing here yet._";
   }
 
   const open = inbox.filter((item) => !item.done);
