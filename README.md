@@ -17,6 +17,8 @@ Open the Scratchpad icon in the activity bar.
 | Click a note | Edit it (`⌘/Ctrl+Enter` saves) |
 | Done or Remove | Archive it or drop it |
 | `/organize-scratchpad` | Triage the dump |
+| `/brief-scratchpad` | Short briefing — no rewrite |
+| `/update-scratchpad` | What’s there, what to drop — asks first |
 | `/rules-from-scratchpad` | Pick notes to turn into project rules |
 
 Command Palette: Quick Dump, Clear Dump.
@@ -28,6 +30,8 @@ Command Palette: Quick Dump, Clear Dump.
 | `.cursor/scratchpad.md` | Thought dump | Hidden in explorer; off git |
 | `.cursor/rules/scratchpad.mdc` | Don’t chase the thought dump | Visible; off git |
 | `.cursor/skills/organize-scratchpad/SKILL.md` | Triage the dump | Visible; off git |
+| `.cursor/skills/brief-scratchpad/SKILL.md` | Brief the dump | Visible; off git |
+| `.cursor/skills/update-scratchpad/SKILL.md` | Prune the dump | Visible; off git |
 | `.cursor/skills/rules-from-scratchpad/SKILL.md` | Draft repo rules from notes | Visible; off git |
 
 Written when you open a folder with the extension. Listed in `.git/info/exclude`, not `.gitignore`. Rules you create from notes are normal project files and can be committed.
