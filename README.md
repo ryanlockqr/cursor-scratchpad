@@ -13,8 +13,9 @@ Open the Scratchpad icon in the activity bar.
 
 | You do | What happens |
 | --- | --- |
-| Type a thought, press **Enter** | Adds it to the thought dump (`Shift+Enter` for a new line) |
-| Check or Remove | Mark done or drop it |
+| Type or paste a note, press **Enter** | Adds it to the thought dump (`Shift+Enter` for a new line) |
+| Click a note | Edit it (`⌘/Ctrl+Enter` saves) |
+| Done or Remove | Archive it or drop it |
 | `/organize-scratchpad` | Triage the dump |
 | `/rules-from-scratchpad` | Pick notes to turn into project rules |
 

@@ -20,7 +20,7 @@ export const EMPTY_STATE: DumpState = {
   updatedAt: new Date(0).toISOString(),
 };
 
-export const MAX_ITEM_LENGTH = 2_000;
+export const MAX_ITEM_LENGTH = 100_000;
 export const MAX_INBOX_ITEMS = 500;
 
 /** Source of truth for the thought dump. Hidden from explorer; stays off git. */
@@ -39,6 +39,7 @@ const EXCLUDE_MARKERS = [
   `${RULES_FROM_NOTES_SKILL_DIR}/`,
 ];
 const CHECKBOX_RE = /^- \[([ xX])\]\s+(.+?)(?:\s+<!--id:([^\s>]+)-->)?\s*$/;
+const NOTE_HEADING_RE = /^####\s+<!--id:([^\s>]+)-->\s*$/;
 const FOOTER_RE = /_Last synced:\s*([^\s_]+)/;
 
 export class SyncError extends Error {
@@ -169,46 +170,122 @@ export function cloneState(state: DumpState): DumpState {
 }
 
 export function parseDump(contents: string): DumpState {
-  const inbox: InboxItem[] = [];
-  const seen = new Set<string>();
-  const now = new Date().toISOString();
   const footerMatch = FOOTER_RE.exec(contents);
   const updatedAt = footerMatch?.[1] && !Number.isNaN(Date.parse(footerMatch[1]))
     ? footerMatch[1]
-    : now;
+    : new Date().toISOString();
 
-  for (const rawLine of contents.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    const match = CHECKBOX_RE.exec(line);
-    if (!match) {
-      continue;
-    }
-
-    const done = match[1]!.toLowerCase() === "x";
-    const text = sanitizeUserText(stripIdMarker(match[2] ?? ""));
-    if (text.length === 0) {
-      continue;
-    }
-
-    let id = match[3]?.trim() || "";
-    if (!id || seen.has(id)) {
-      id = stableIdFor(text, done, inbox.length);
-    }
-    seen.add(id);
-
-    inbox.push({
-      id,
-      text,
-      done,
-      createdAt: updatedAt,
-    });
-
-    if (inbox.length >= MAX_INBOX_ITEMS) {
-      break;
-    }
+  const fromNotes = parseHeadingNotes(contents, updatedAt);
+  if (fromNotes.length > 0) {
+    return { inbox: fromNotes, updatedAt };
   }
 
-  return { inbox, updatedAt };
+  return { inbox: parseLegacyCheckboxes(contents, updatedAt), updatedAt };
+}
+
+function parseHeadingNotes(contents: string, updatedAt: string): InboxItem[] {
+  const inbox: InboxItem[] = [];
+  const seen = new Set<string>();
+  let sectionDone = false;
+  let current: { done: boolean; id: string; lines: string[] } | undefined;
+
+  const flush = (): void => {
+    pushItem(inbox, seen, current, updatedAt);
+    current = undefined;
+  };
+
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (FOOTER_RE.test(trimmed) || trimmed === "# Scratchpad") {
+      flush();
+      continue;
+    }
+    if (/^###\s+Done\b/i.test(trimmed)) {
+      flush();
+      sectionDone = true;
+      continue;
+    }
+    if (/^###\s+Open\b/i.test(trimmed)) {
+      flush();
+      sectionDone = false;
+      continue;
+    }
+
+    const heading = NOTE_HEADING_RE.exec(trimmed);
+    if (heading) {
+      flush();
+      current = { done: sectionDone, id: heading[1]!.trim(), lines: [] };
+      continue;
+    }
+
+    if (current) {
+      current.lines.push(rawLine);
+    }
+  }
+  flush();
+  return inbox;
+}
+
+function parseLegacyCheckboxes(contents: string, updatedAt: string): InboxItem[] {
+  const inbox: InboxItem[] = [];
+  const seen = new Set<string>();
+  let current: { done: boolean; id: string; lines: string[] } | undefined;
+
+  const flush = (): void => {
+    pushItem(inbox, seen, current, updatedAt);
+    current = undefined;
+  };
+
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    const match = CHECKBOX_RE.exec(trimmed);
+    const isTopLevelCheckbox = Boolean(match) && !rawLine.startsWith(" ");
+
+    if (isTopLevelCheckbox && match) {
+      flush();
+      current = {
+        done: match[1]!.toLowerCase() === "x",
+        id: match[3]?.trim() || "",
+        lines: [stripIdMarker(match[2] ?? "")],
+      };
+      continue;
+    }
+
+    if (current && rawLine.startsWith("  ")) {
+      current.lines.push(rawLine.slice(2));
+    }
+  }
+  flush();
+  return inbox;
+}
+
+function pushItem(
+  inbox: InboxItem[],
+  seen: Set<string>,
+  current: { done: boolean; id: string; lines: string[] } | undefined,
+  updatedAt: string,
+): void {
+  if (!current || inbox.length >= MAX_INBOX_ITEMS) {
+    return;
+  }
+
+  const text = sanitizeUserText(current.lines.join("\n"));
+  if (text.length === 0) {
+    return;
+  }
+
+  let id = current.id;
+  if (!id || seen.has(id)) {
+    id = stableIdFor(text, current.done, inbox.length);
+  }
+  seen.add(id);
+
+  inbox.push({
+    id,
+    text,
+    done: current.done,
+    createdAt: updatedAt,
+  });
 }
 
 function stripIdMarker(text: string): string {
@@ -281,9 +358,8 @@ function renderOrganizeSkill(): string {
     "3. Rewrite the file cleanly:",
     "   - Keep the `# Scratchpad` title and a one-line purpose blurb.",
     "   - Use `### Open` and `### Done` sections.",
-    "   - Items as `- [ ]` / `- [x]` checkbox lines.",
-    "   - Preserve trailing `<!--id:...-->` markers on lines that already have them.",
-    "   - Optionally group open items under short subheadings (e.g. `#### Later`, `#### Bugs`) if that helps.",
+    "   - Each note is a `#### <!--id:...-->` heading, then the note body as normal markdown.",
+    "   - Preserve `<!--id:...-->` on the heading.",
     "4. Do not invent new work. Do not expand dump items into a new project plan unless asked.",
     "5. After rewriting, briefly tell the human what you changed (counts moved, removed, or grouped).",
     "",
@@ -351,22 +427,20 @@ function renderInboxMarkdown(inbox: readonly InboxItem[]): string {
   const blocks: string[] = [];
 
   if (open.length > 0) {
-    blocks.push("### Open", "", ...open.map(toCheckboxLine));
+    blocks.push("### Open", "", ...open.map(toNoteBlock));
   }
   if (done.length > 0) {
     if (blocks.length > 0) {
       blocks.push("");
     }
-    blocks.push("### Done", "", ...done.map(toCheckboxLine));
+    blocks.push("### Done", "", ...done.map(toNoteBlock));
   }
 
   return blocks.join("\n");
 }
 
-function toCheckboxLine(item: InboxItem): string {
-  const mark = item.done ? "x" : " ";
-  const text = item.text.replace(/\n+/g, " ").trim();
-  return `- [${mark}] ${text} <!--id:${item.id}-->`;
+function toNoteBlock(item: InboxItem): string {
+  return [`#### <!--id:${item.id}-->`, "", item.text.replace(/\n+$/, ""), ""].join("\n");
 }
 
 function renderFooter(updatedAt: string): string {

@@ -15,6 +15,7 @@ type WebviewToExtension =
   | { type: "ready" }
   | { type: "dump"; text: string }
   | { type: "toggleInbox"; id: string }
+  | { type: "editInbox"; id: string; text: string }
   | { type: "removeInbox"; id: string };
 
 export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -170,6 +171,9 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       case "removeInbox":
         await this.removeInbox(message.id);
         return;
+      case "editInbox":
+        await this.editInbox(message.id, message.text);
+        return;
     }
   }
 
@@ -189,6 +193,23 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
     await this.reloadFromDisk();
     this.state = {
       inbox: this.state.inbox.filter((item) => item.id !== id),
+      updatedAt: new Date().toISOString(),
+    };
+    await this.writeToDisk();
+  }
+
+  private async editInbox(id: string, raw: string): Promise<void> {
+    await this.reloadFromDisk();
+    const text = sanitizeUserText(raw);
+    if (text.length === 0) {
+      return;
+    }
+
+    const inbox = this.state.inbox.map((item) =>
+      item.id === id ? { ...item, text } : item,
+    );
+    this.state = {
+      inbox,
       updatedAt: new Date().toISOString(),
     };
     await this.writeToDisk();
@@ -364,6 +385,23 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       line-height: 1.35;
       word-break: break-word;
       white-space: pre-wrap;
+      cursor: text;
+    }
+
+    textarea.note-edit {
+      width: 100%;
+      min-height: 64px;
+      max-height: 240px;
+      resize: vertical;
+      margin: 0;
+      border: 1px solid var(--vscode-focusBorder);
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      font-family: inherit;
+      font-size: inherit;
+      line-height: 1.4;
+      border-radius: 4px;
+      padding: 6px 8px;
     }
 
     .actions {
@@ -429,13 +467,12 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       </div>
       <textarea
         id="dump"
-        maxlength="2000"
         rows="3"
-        placeholder="A thought…"
+        placeholder="A thought… paste a whole note if you want"
         autocomplete="off"
         spellcheck="true"
       ></textarea>
-      <p class="hint">Enter dumps it. Shift+Enter for a new line.</p>
+      <p class="hint">Enter dumps it. Shift+Enter for a new line. Click a note to edit.</p>
       <div class="inbox" id="inbox"></div>
     </section>
   </div>
@@ -479,15 +516,55 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         return;
       }
       const button = target.closest("button[data-action]");
-      if (!(button instanceof HTMLElement)) {
+      if (button instanceof HTMLElement) {
+        const id = button.getAttribute("data-id");
+        const action = button.getAttribute("data-action");
+        if (id && action === "remove") {
+          vscode.postMessage({ type: "removeInbox", id });
+        }
         return;
       }
-      const id = button.getAttribute("data-id");
-      const action = button.getAttribute("data-action");
-      if (id && action === "remove") {
-        vscode.postMessage({ type: "removeInbox", id });
+      const textEl = target.closest(".text");
+      if (textEl instanceof HTMLElement && !textEl.querySelector("textarea")) {
+        const id = textEl.getAttribute("data-id");
+        const item = textEl.closest(".item");
+        if (id && item) {
+          startEdit(textEl, id);
+        }
       }
     });
+
+    function startEdit(textEl, id) {
+      const current = textEl.textContent || "";
+      const editor = document.createElement("textarea");
+      editor.className = "note-edit";
+      editor.value = current;
+      textEl.replaceChildren(editor);
+      editor.focus();
+      editor.setSelectionRange(editor.value.length, editor.value.length);
+
+      const save = () => {
+        const next = editor.value.trim();
+        if (!next || next === current) {
+          textEl.textContent = current;
+          return;
+        }
+        vscode.postMessage({ type: "editInbox", id, text: editor.value });
+      };
+
+      editor.addEventListener("blur", save);
+      editor.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          textEl.textContent = current;
+          return;
+        }
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          editor.blur();
+        }
+      });
+    }
 
     window.addEventListener("message", (event) => {
       const data = event.data;
@@ -504,6 +581,11 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       statusEl.dataset.busy = payload.syncing ? "true" : "false";
       statusEl.textContent = payload.syncing ? "Saving…" : "Saved";
 
+      const editing = inboxEl.querySelector("textarea.note-edit");
+      if (editing && document.activeElement === editing) {
+        return;
+      }
+
       if (!state.inbox || state.inbox.length === 0) {
         inboxEl.innerHTML = '<div class="empty">Nothing here yet.</div>';
         return;
@@ -518,7 +600,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       return (
         '<div class="item' + done + '">' +
           '<input type="checkbox" data-id="' + escapeAttr(item.id) + '"' + checked + ' />' +
-          '<div class="text">' + escapeHtml(item.text) + '</div>' +
+          '<div class="text" data-id="' + escapeAttr(item.id) + '">' + escapeHtml(item.text) + '</div>' +
           '<div class="actions">' +
             '<button class="ghost" type="button" data-action="remove" data-id="' + escapeAttr(item.id) + '">Remove</button>' +
           '</div>' +
@@ -555,6 +637,11 @@ function isWebviewMessage(value: unknown): value is WebviewToExtension {
       return true;
     case "dump":
       return typeof (value as { text?: unknown }).text === "string";
+    case "editInbox":
+      return (
+        typeof (value as { id?: unknown }).id === "string" &&
+        typeof (value as { text?: unknown }).text === "string"
+      );
     case "toggleInbox":
     case "removeInbox":
       return typeof (value as { id?: unknown }).id === "string";
