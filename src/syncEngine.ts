@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 
 export interface InboxItem {
   readonly id: string;
+  readonly subject: string;
   readonly text: string;
   readonly done: boolean;
   readonly createdAt: string;
@@ -21,6 +22,7 @@ export const EMPTY_STATE: DumpState = {
 };
 
 export const MAX_ITEM_LENGTH = 100_000;
+export const MAX_SUBJECT_LENGTH = 80;
 export const MAX_INBOX_ITEMS = 500;
 
 /** Source of truth for the thought dump. Hidden from explorer; stays off git. */
@@ -46,6 +48,7 @@ const EXCLUDE_MARKERS = [
 ];
 const CHECKBOX_RE = /^- \[([ xX])\]\s+(.+?)(?:\s+<!--id:([^\s>]+)-->)?\s*$/;
 const NOTE_HEADING_RE = /^####\s+<!--id:([^\s>]+)-->\s*$/;
+const SUBJECT_LINE_RE = /^\*\*(.+)\*\*\s*$/;
 const FOOTER_RE = /_Last synced:\s*([^\s_]+)/;
 
 export class SyncError extends Error {
@@ -149,14 +152,16 @@ export class SyncEngine {
   }
 }
 
-export function createInboxItem(text: string): InboxItem {
+export function createInboxItem(text: string, subject = ""): InboxItem {
   const trimmed = sanitizeUserText(text);
-  if (trimmed.length === 0) {
+  const title = sanitizeSubject(subject);
+  if (trimmed.length === 0 && title.length === 0) {
     throw new SyncError("Dumped thoughts cannot be empty.");
   }
 
   return {
     id: createId(),
+    subject: title,
     text: trimmed,
     done: false,
     createdAt: new Date().toISOString(),
@@ -170,6 +175,16 @@ export function sanitizeUserText(text: string): string {
     .replace(/\r/g, "\n")
     .trim()
     .slice(0, MAX_ITEM_LENGTH);
+}
+
+export function sanitizeSubject(text: string): string {
+  return text
+    .replace(/\u0000/g, "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/^\*+|\*+$/g, "")
+    .replace(/\*/g, "")
+    .trim()
+    .slice(0, MAX_SUBJECT_LENGTH);
 }
 
 export function cloneState(state: DumpState): DumpState {
@@ -279,23 +294,42 @@ function pushItem(
     return;
   }
 
-  const text = sanitizeUserText(current.lines.join("\n"));
-  if (text.length === 0) {
+  const parsed = splitSubjectAndBody(current.lines.join("\n"));
+  if (parsed.text.length === 0 && parsed.subject.length === 0) {
     return;
   }
 
   let id = current.id;
   if (!id || seen.has(id)) {
-    id = stableIdFor(text, current.done, inbox.length);
+    id = stableIdFor(`${parsed.subject}\n${parsed.text}`, current.done, inbox.length);
   }
   seen.add(id);
 
   inbox.push({
     id,
-    text,
+    subject: parsed.subject,
+    text: parsed.text,
     done: current.done,
     createdAt: updatedAt,
   });
+}
+
+function splitSubjectAndBody(raw: string): { subject: string; text: string } {
+  const trimmed = sanitizeUserText(raw);
+  if (trimmed.length === 0) {
+    return { subject: "", text: "" };
+  }
+
+  const [first, ...rest] = trimmed.split("\n");
+  const match = first ? SUBJECT_LINE_RE.exec(first.trim()) : undefined;
+  if (!match) {
+    return { subject: "", text: trimmed };
+  }
+
+  return {
+    subject: sanitizeSubject(match[1] ?? ""),
+    text: sanitizeUserText(rest.join("\n")),
+  };
 }
 
 function stripIdMarker(text: string): string {
@@ -338,9 +372,9 @@ function renderRule(): string {
     "- Those items are **not** the current task.",
     "- Do **not** switch to dump items unless the human asks.",
     "- Stay on the work in progress. Capture is handled by the Scratchpad extension sidebar.",
-    "- When asked to organize, triage, clean up, or prioritize the dump, use `/organize-scratchpad`.",
+    "- When asked to regroup, cluster, or rewrite dump layout (keep the notes), use `/organize-scratchpad`.",
     "- When asked what’s in the dump or for a briefing, use `/brief-scratchpad`.",
-    "- When asked to prune or update the dump (what to keep vs drop), use `/update-scratchpad`.",
+    "- When asked to prune, drop, or mark dump notes done, use `/update-scratchpad`.",
     "- When asked to turn dump notes into Cursor rules, use `/rules-from-scratchpad`.",
     "",
   ].join("\n");
@@ -351,9 +385,9 @@ function renderOrganizeSkill(): string {
     "---",
     "name: organize-scratchpad",
     "description: >-",
-    "  Triages and rewrites the project thought dump at .cursor/scratchpad.md.",
-    "  Use when the user asks to organize, triage, clean up, prioritize, cluster,",
-    "  or make sense of scratchpad / the thought dump.",
+    "  Rewrites dump layout only: cluster, order, add missing subjects.",
+    "  Does not delete notes. Use when the user asks to organize, regroup,",
+    "  cluster, or tidy scratchpad / the thought dump. Not for pruning.",
     "disable-model-invocation: true",
     "---",
     "",
@@ -361,24 +395,25 @@ function renderOrganizeSkill(): string {
     "",
     "## When to use",
     "",
-    "Only when the human asks to organize or triage the thought dump. Do not run this unprompted mid-task.",
+    "Only when the human asks to organize, regroup, or cluster the dump. Do not run unprompted. Do **not** delete or mark done — that’s `/update-scratchpad`. Do **not** brief — that’s `/brief-scratchpad`.",
     "",
     "## Instructions",
     "",
     "1. Read `.cursor/scratchpad.md` — it is the source of truth.",
-    "2. Keep every open item that still matters. Drop or mark done only what is clearly obsolete or already finished.",
-    "3. Rewrite the file cleanly:",
-    "   - Keep the `# Scratchpad` title and a one-line purpose blurb.",
-    "   - Use `### Open` and `### Done` sections.",
-    "   - Each note is a `#### <!--id:...-->` heading, then the note body as normal markdown.",
-    "   - Preserve `<!--id:...-->` on the heading.",
-    "4. Do not invent new work. Do not expand dump items into a new project plan unless asked.",
-    "5. After rewriting, briefly tell the human what you changed (counts moved, removed, or grouped).",
+    "2. Keep every note. Do not drop, merge-away, or mark done. Empty notes can be skipped.",
+    "3. Rewrite layout only:",
+    "   - Keep `# Scratchpad` and the one-line purpose blurb.",
+    "   - `### Open` / `### Done` as now; do not move Open → Done.",
+    "   - Each note: `#### <!--id:...-->`, optional `**subject**` on the next paragraph, then body.",
+    "   - Preserve `<!--id:...-->`. You may add or shorten a subject (one line, no nested markdown).",
+    "   - Cluster related open notes (order within Open). Do not invent new notes.",
+    "4. Do not expand dump items into a project plan.",
+    "5. After rewriting, say what you regrouped and which subjects you added.",
     "",
     "## Examples",
     "",
     "- \"organize my scratchpad\"",
-    "- \"triage the dump\"",
+    "- \"cluster the dump\"",
     "- `/organize-scratchpad`",
     "",
   ].join("\n");
@@ -417,7 +452,7 @@ function renderRulesFromNotesSkill(): string {
     "   - Reference files with `@path` instead of pasting dump text.",
     "   - Do not overwrite existing rules unless asked. Never overwrite `scratchpad.mdc`.",
     "   - Do **not** git-exclude these files — they are version-controlled project rules.",
-    "6. Do not empty the dump. Optionally mark only chosen notes as done, preserving `<!--id:...-->`.",
+    "6. Do not empty the dump. Optionally mark only chosen notes as done, preserving `<!--id:...-->` and any `**subject**`.",
     "7. Tell them what you wrote, the apply type of each, and what stayed as tasks.",
     "",
     "## Examples",
@@ -444,7 +479,7 @@ function renderBriefSkill(): string {
     "",
     "## When to use",
     "",
-    "Only when invoked (`/brief-scratchpad`) or the human asks what’s in the thought dump. Do not brief unprompted mid-task. Do not rewrite `.cursor/scratchpad.md` — that’s `/organize-scratchpad`.",
+    "Only when invoked (`/brief-scratchpad`) or the human asks what’s in the thought dump. Do not brief unprompted mid-task. Do not rewrite `.cursor/scratchpad.md`. Regroup → `/organize-scratchpad`. Prune → `/update-scratchpad`.",
     "",
     "## Instructions",
     "",
@@ -452,7 +487,7 @@ function renderBriefSkill(): string {
     "2. Reply in chat only. Do not edit the dump, rules, or skills.",
     "3. Keep it short:",
     "   - Counts: open vs done.",
-    "   - Themes (a few groups), each with one-line note titles — not full bodies.",
+    "   - Themes (a few groups), each with **subject** if present, else a one-line title — not full bodies.",
     "   - Stale or duplicate-looking open notes, if any.",
     "4. Do not start work from dump items. Do not expand notes into a plan unless they pick one after the brief.",
     "5. If the dump is empty, say so in one line.",
@@ -471,9 +506,9 @@ function renderUpdateSkill(): string {
     "---",
     "name: update-scratchpad",
     "description: >-",
-    "  Reviews the thought dump: what’s there, what can be dropped or marked done.",
-    "  Use when the user asks to update, prune, clean out, or drop stale scratchpad",
-    "  / dump notes. Ask before deleting. Do not start new work from the dump.",
+    "  Prunes the thought dump: drop or mark done, after asking. Does not regroup.",
+    "  Use when the user asks to update, prune, clean out, triage stale notes,",
+    "  or drop scratchpad / dump items.",
     "disable-model-invocation: true",
     "---",
     "",
@@ -481,14 +516,14 @@ function renderUpdateSkill(): string {
     "",
     "## When to use",
     "",
-    "Only when invoked (`/update-scratchpad`) or the human asks to prune/update the dump. Do not run unprompted. For a read-only overview use `/brief-scratchpad`. For a full rewrite/group use `/organize-scratchpad`.",
+    "Only when invoked (`/update-scratchpad`) or the human asks to prune, drop, or mark dump notes done. Do not run unprompted. Read-only overview → `/brief-scratchpad`. Regroup/cluster without deleting → `/organize-scratchpad`.",
     "",
     "## Instructions",
     "",
-    "1. Read `.cursor/scratchpad.md`. List open notes as short titles (not full bodies).",
-    "2. Flag what looks droppable: already shipped, duplicates, empty rambles, one-off tasks that are done, notes that belong in a rule/skill instead.",
+    "1. Read `.cursor/scratchpad.md`. List open notes by **subject** (or first line if none) — not full bodies.",
+    "2. Flag droppable or done: shipped, duplicates, empty rambles, finished one-offs. Notes that belong in a rule → mention `/rules-from-scratchpad`, do not convert here.",
     "3. **Ask before changing the file.** Numbered list: keep / mark done / delete. They pick numbers, \"delete all flagged\", or \"none\".",
-    "4. After they pick, rewrite `.cursor/scratchpad.md` only for those actions. Keep `# Scratchpad`, Open/Done, `#### <!--id:...-->` notes, ids on keepers.",
+    "4. After they pick, apply **only** those keep/done/delete actions. Do not reorder or rewrite remaining notes. Keep `# Scratchpad`, Open/Done, `#### <!--id:...-->`, optional `**subject**`, ids on keepers.",
     "5. Do not invent new notes. Do not turn this into a project plan.",
     "6. Say what you removed, marked done, and left open.",
     "",
@@ -496,7 +531,7 @@ function renderUpdateSkill(): string {
     "",
     "- `/update-scratchpad`",
     "- \"what can I drop from the dump\"",
-    "- \"update my scratchpad\"",
+    "- \"prune my scratchpad\"",
     "",
   ].join("\n");
 }
@@ -524,7 +559,14 @@ function renderInboxMarkdown(inbox: readonly InboxItem[]): string {
 }
 
 function toNoteBlock(item: InboxItem): string {
-  return [`#### <!--id:${item.id}-->`, "", item.text.replace(/\n+$/, ""), ""].join("\n");
+  const body: string[] = [`#### <!--id:${item.id}-->`, ""];
+  if (item.subject) {
+    body.push(`**${item.subject}**`, "");
+  }
+  if (item.text) {
+    body.push(item.text.replace(/\n+$/, ""), "");
+  }
+  return body.join("\n");
 }
 
 function renderFooter(updatedAt: string): string {
