@@ -6,6 +6,7 @@ import {
   DumpState,
   EMPTY_STATE,
   MAX_INBOX_ITEMS,
+  sanitizeSubject,
   sanitizeUserText,
   SyncEngine,
   SyncError,
@@ -13,8 +14,8 @@ import {
 
 type WebviewToExtension =
   | { type: "ready" }
-  | { type: "dump"; text: string }
-  | { type: "editInbox"; id: string; text: string }
+  | { type: "dump"; text: string; subject?: string }
+  | { type: "editInbox"; id: string; text: string; subject?: string }
   | { type: "openNote"; id: string }
   | { type: "removeInbox"; id: string };
 
@@ -61,11 +62,12 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
     });
   }
 
-  public async dumpThought(raw: string): Promise<void> {
+  public async dumpThought(raw: string, subjectRaw = ""): Promise<void> {
     await this.reloadFromDisk();
 
     const text = sanitizeUserText(raw);
-    if (text.length === 0) {
+    const subject = sanitizeSubject(subjectRaw);
+    if (text.length === 0 && subject.length === 0) {
       return;
     }
 
@@ -76,7 +78,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       return;
     }
 
-    const item = createInboxItem(text);
+    const item = createInboxItem(text, subject);
     this.state = {
       inbox: [...this.state.inbox, item],
       updatedAt: new Date().toISOString(),
@@ -168,7 +170,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         this.postState();
         return;
       case "dump":
-        await this.dumpThought(message.text);
+        await this.dumpThought(message.text, message.subject ?? "");
         return;
       case "openNote":
         this.openNotePanel(message.id);
@@ -177,7 +179,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         await this.removeInbox(message.id);
         return;
       case "editInbox":
-        await this.editInbox(message.id, message.text);
+        await this.editInbox(message.id, message.text, message.subject ?? "");
         return;
     }
   }
@@ -191,15 +193,16 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
     await this.writeToDisk();
   }
 
-  private async editInbox(id: string, raw: string): Promise<void> {
+  private async editInbox(id: string, raw: string, subjectRaw = ""): Promise<void> {
     await this.reloadFromDisk();
     const text = sanitizeUserText(raw);
-    if (text.length === 0) {
+    const subject = sanitizeSubject(subjectRaw);
+    if (text.length === 0 && subject.length === 0) {
       return;
     }
 
     const inbox = this.state.inbox.map((item) =>
-      item.id === id ? { ...item, text } : item,
+      item.id === id ? { ...item, text, subject } : item,
     );
     this.state = {
       inbox,
@@ -241,7 +244,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       return;
     }
 
-    const title = noteTitle(item.text);
+    const title = noteTitle(item);
     if (this.notePanel) {
       this.notePanelId = id;
       this.notePanel.title = title;
@@ -270,7 +273,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         return;
       }
       if (message.type === "editInbox") {
-        void this.editInbox(message.id, message.text);
+        void this.editInbox(message.id, message.text, message.subject ?? "");
       }
     });
     this.postNotePanel();
@@ -287,10 +290,11 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       return;
     }
 
-    this.notePanel.title = noteTitle(item.text);
+    this.notePanel.title = noteTitle(item);
     void this.notePanel.webview.postMessage({
       type: "note",
       id: item.id,
+      subject: item.subject,
       text: item.text,
       syncing: this.syncing,
     });
@@ -341,7 +345,21 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       padding: 10px;
       outline: none;
     }
-    textarea:focus { border-color: var(--vscode-focusBorder); }
+    input[type="text"] {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      border: 1px solid var(--vscode-input-border, transparent);
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: 700;
+      border-radius: 6px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    textarea:focus, input[type="text"]:focus { border-color: var(--vscode-focusBorder); }
     .bar { display: flex; justify-content: flex-end; align-items: center; }
     button {
       border: none;
@@ -356,22 +374,25 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
 </head>
 <body>
   <div class="bar"><button type="button" id="save">Save</button></div>
+  <input type="text" id="subject" placeholder="Subject (optional)" maxlength="80" autocomplete="off" />
   <textarea id="body" spellcheck="true"></textarea>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const body = document.getElementById("body");
+    const subject = document.getElementById("subject");
     const save = document.getElementById("save");
     let noteId = "";
     window.addEventListener("message", (event) => {
       const data = event.data;
       if (!data || data.type !== "note") return;
       noteId = data.id;
-      if (document.activeElement !== body) body.value = data.text;
+      if (document.activeElement !== body) body.value = data.text || "";
+      if (document.activeElement !== subject) subject.value = data.subject || "";
       save.textContent = data.syncing ? "Saving…" : "Save";
     });
     save.addEventListener("click", () => {
       if (!noteId) return;
-      vscode.postMessage({ type: "editInbox", id: noteId, text: body.value });
+      vscode.postMessage({ type: "editInbox", id: noteId, text: body.value, subject: subject.value });
     });
     body.addEventListener("keydown", (event) => {
       if (event.key === "s" && (event.metaKey || event.ctrlKey)) {
@@ -420,7 +441,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
 
     body {
       margin: 0;
-      padding: 12px;
+      padding: 12px 12px 28px;
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
       color: var(--vscode-foreground);
@@ -498,6 +519,32 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       box-shadow: 0 0 0 1px var(--vscode-focusBorder);
     }
 
+    .subject-input {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      margin-bottom: 6px;
+      border: 1px solid var(--vscode-input-border, transparent);
+      background: var(--vscode-editor-background, var(--vscode-input-background));
+      color: var(--vscode-input-foreground);
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: 700;
+      border-radius: 6px;
+      padding: 7px 10px;
+      outline: none;
+    }
+
+    .subject-input:focus {
+      border-color: var(--vscode-focusBorder);
+      box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+    }
+
+    .subject-input::placeholder {
+      font-weight: 500;
+      color: var(--vscode-input-placeholderForeground);
+    }
+
     .hint {
       margin: 6px 0 0;
       font-size: 11px;
@@ -508,6 +555,7 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       display: flex;
       flex-direction: column;
       gap: 8px;
+      padding-bottom: 24px;
     }
 
     .item {
@@ -531,6 +579,11 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       line-height: 1.35;
       word-break: break-word;
       white-space: pre-wrap;
+    }
+
+    .item-subject {
+      font-weight: 700;
+      margin-bottom: 4px;
     }
 
     .actions {
@@ -589,6 +642,14 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
         <span class="label">Dump</span>
         <span class="status" id="status">Idle</span>
       </div>
+      <input
+        class="subject-input"
+        id="subject"
+        type="text"
+        maxlength="80"
+        placeholder="Subject (optional)"
+        autocomplete="off"
+      />
       <textarea
         id="dump"
         rows="3"
@@ -604,23 +665,42 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const dumpInput = document.getElementById("dump");
+    const subjectInput = document.getElementById("subject");
     const inboxEl = document.getElementById("inbox");
     const statusEl = document.getElementById("status");
     const bannerEl = document.getElementById("workspace-banner");
 
     vscode.postMessage({ type: "ready" });
 
+    function submitDump() {
+      const text = dumpInput.value.trim();
+      const subject = subjectInput.value.trim();
+      if (!text && !subject) {
+        return;
+      }
+      vscode.postMessage({ type: "dump", text, subject });
+      dumpInput.value = "";
+      subjectInput.value = "";
+    }
+
     dumpInput.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey) {
         return;
       }
       event.preventDefault();
-      const text = dumpInput.value.trim();
-      if (!text) {
+      submitDump();
+    });
+
+    subjectInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
         return;
       }
-      vscode.postMessage({ type: "dump", text });
-      dumpInput.value = "";
+      event.preventDefault();
+      if (dumpInput.value.trim()) {
+        submitDump();
+      } else {
+        dumpInput.focus();
+      }
     });
 
     inboxEl.addEventListener("click", (event) => {
@@ -682,10 +762,17 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
     }
 
     function renderItem(item) {
+      const subject = String(item.subject || "");
       const preview = previewText(item.text);
+      const titleHtml = subject
+        ? '<div class="item-subject">' + escapeHtml(subject) + '</div>'
+        : "";
+      const bodyHtml = preview
+        ? '<div>' + escapeHtml(preview) + '</div>'
+        : "";
       return (
         '<div class="item" data-id="' + escapeAttr(item.id) + '">' +
-          '<div class="text">' + escapeHtml(preview) + '</div>' +
+          '<div class="text">' + titleHtml + bodyHtml + '</div>' +
           '<div class="actions">' +
             '<button class="ghost" type="button" data-action="remove" data-id="' + escapeAttr(item.id) + '">Remove</button>' +
           '</div>' +
@@ -711,8 +798,8 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
   }
 }
 
-function noteTitle(text: string): string {
-  const line = text.split("\n")[0]?.trim() || "Note";
+function noteTitle(item: { subject: string; text: string }): string {
+  const line = item.subject.trim() || item.text.split("\n")[0]?.trim() || "Note";
   return line.length > 48 ? `${line.slice(0, 45)}…` : line;
 }
 

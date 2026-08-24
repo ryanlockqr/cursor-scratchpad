@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.10] - 2026-08-24
+
+- Optional note subject, shown bold in the dump and the sidebar
+- Split skills: organize regroups, update prunes, brief stays read-only
+- Extra space below the last sidebar note
+
 ## [0.1.9] - 2026-08-23
 
 - Each note is its own card; drop the “This note only” label; no horizontal scroll on the editor
