@@ -30,21 +30,20 @@ export const DUMP_REL = ".cursor/scratchpad.md";
 /** Cursor rule — local to this machine. Visible in the tree; not committed. */
 const RULE_REL = ".cursor/rules/scratchpad.mdc";
 const ORGANIZE_SKILL_DIR = ".cursor/skills/organize-scratchpad";
-const RULES_FROM_NOTES_SKILL_DIR = ".cursor/skills/rules-from-scratchpad";
 const BRIEF_SKILL_DIR = ".cursor/skills/brief-scratchpad";
-const UPDATE_SKILL_DIR = ".cursor/skills/update-scratchpad";
+/** Removed in 0.1.11 — still deleted on activate if left behind. */
+const LEGACY_SKILL_DIRS = [
+  ".cursor/skills/rules-from-scratchpad",
+  ".cursor/skills/update-scratchpad",
+] as const;
 const ORGANIZE_SKILL_REL = `${ORGANIZE_SKILL_DIR}/SKILL.md`;
-const RULES_FROM_NOTES_SKILL_REL = `${RULES_FROM_NOTES_SKILL_DIR}/SKILL.md`;
 const BRIEF_SKILL_REL = `${BRIEF_SKILL_DIR}/SKILL.md`;
-const UPDATE_SKILL_REL = `${UPDATE_SKILL_DIR}/SKILL.md`;
 
 const EXCLUDE_MARKERS = [
   DUMP_REL,
   RULE_REL,
   `${ORGANIZE_SKILL_DIR}/`,
-  `${RULES_FROM_NOTES_SKILL_DIR}/`,
   `${BRIEF_SKILL_DIR}/`,
-  `${UPDATE_SKILL_DIR}/`,
 ];
 const CHECKBOX_RE = /^- \[([ xX])\]\s+(.+?)(?:\s+<!--id:([^\s>]+)-->)?\s*$/;
 const NOTE_HEADING_RE = /^####\s+<!--id:([^\s>]+)-->\s*$/;
@@ -96,18 +95,13 @@ export class SyncEngine {
     await fs.mkdir(path.dirname(path.join(root, DUMP_REL)), { recursive: true });
     await fs.mkdir(path.dirname(path.join(root, RULE_REL)), { recursive: true });
     await fs.mkdir(path.dirname(path.join(root, ORGANIZE_SKILL_REL)), { recursive: true });
-    await fs.mkdir(path.dirname(path.join(root, RULES_FROM_NOTES_SKILL_REL)), {
-      recursive: true,
-    });
     await fs.mkdir(path.dirname(path.join(root, BRIEF_SKILL_REL)), { recursive: true });
-    await fs.mkdir(path.dirname(path.join(root, UPDATE_SKILL_REL)), { recursive: true });
+    await removeLegacySkillDirs(root);
     await ensureLocalGitExclude(root);
     await seedFileIfMissing(path.join(root, DUMP_REL), renderDump(EMPTY_STATE));
     await atomicWrite(path.join(root, RULE_REL), renderRule());
     await atomicWrite(path.join(root, ORGANIZE_SKILL_REL), renderOrganizeSkill());
-    await atomicWrite(path.join(root, RULES_FROM_NOTES_SKILL_REL), renderRulesFromNotesSkill());
     await atomicWrite(path.join(root, BRIEF_SKILL_REL), renderBriefSkill());
-    await atomicWrite(path.join(root, UPDATE_SKILL_REL), renderUpdateSkill());
   }
 
   public async readDump(): Promise<DumpState> {
@@ -372,10 +366,8 @@ function renderRule(): string {
     "- Those items are **not** the current task.",
     "- Do **not** switch to dump items unless the human asks.",
     "- Stay on the work in progress. Capture is handled by the Scratchpad extension sidebar.",
-    "- When asked to regroup, cluster, or rewrite dump layout (keep the notes), use `/organize-scratchpad`.",
+    "- When asked to organize, regroup, prune, drop, or mark dump notes done, use `/organize-scratchpad`.",
     "- When asked what’s in the dump or for a briefing, use `/brief-scratchpad`.",
-    "- When asked to prune, drop, or mark dump notes done, use `/update-scratchpad`.",
-    "- When asked to turn dump notes into Cursor rules, use `/rules-from-scratchpad`.",
     "",
   ].join("\n");
 }
@@ -385,9 +377,9 @@ function renderOrganizeSkill(): string {
     "---",
     "name: organize-scratchpad",
     "description: >-",
-    "  Rewrites dump layout only: cluster, order, add missing subjects.",
-    "  Does not delete notes. Use when the user asks to organize, regroup,",
-    "  cluster, or tidy scratchpad / the thought dump. Not for pruning.",
+    "  Organizes the thought dump: regroup, add subjects, and prune or mark done",
+    "  after asking. Use when the user asks to organize, regroup, cluster, tidy,",
+    "  update, prune, clean out, or drop scratchpad / dump notes.",
     "disable-model-invocation: true",
     "---",
     "",
@@ -395,71 +387,30 @@ function renderOrganizeSkill(): string {
     "",
     "## When to use",
     "",
-    "Only when the human asks to organize, regroup, or cluster the dump. Do not run unprompted. Do **not** delete or mark done — that’s `/update-scratchpad`. Do **not** brief — that’s `/brief-scratchpad`.",
+    "Only when the human asks to organize, regroup, prune, update, or clean the dump. Do not run unprompted. Read-only overview → `/brief-scratchpad`.",
     "",
     "## Instructions",
     "",
     "1. Read `.cursor/scratchpad.md` — it is the source of truth.",
-    "2. Keep every note. Do not drop, merge-away, or mark done. Empty notes can be skipped.",
-    "3. Rewrite layout only:",
+    "2. List open notes by **subject** (or first line if none) — not full bodies.",
+    "3. Propose changes, then **ask before rewriting**:",
+    "   - Regroup / cluster / add or shorten subjects.",
+    "   - Mark done or delete: shipped, duplicates, empty rambles, finished one-offs.",
+    "   Numbered list is fine. They pick numbers, \"delete all flagged\", \"organize only\", or \"none\".",
+    "4. After they pick, rewrite `.cursor/scratchpad.md`:",
     "   - Keep `# Scratchpad` and the one-line purpose blurb.",
-    "   - `### Open` / `### Done` as now; do not move Open → Done.",
-    "   - Each note: `#### <!--id:...-->`, optional `**subject**` on the next paragraph, then body.",
-    "   - Preserve `<!--id:...-->`. You may add or shorten a subject (one line, no nested markdown).",
-    "   - Cluster related open notes (order within Open). Do not invent new notes.",
-    "4. Do not expand dump items into a project plan.",
-    "5. After rewriting, say what you regrouped and which subjects you added.",
+    "   - `### Open` / `### Done`.",
+    "   - Each note: `#### <!--id:...-->`, optional `**subject**`, then body. Preserve ids on keepers.",
+    "   - Do not invent new notes. Empty notes can be dropped.",
+    "5. Do not expand dump items into a project plan.",
+    "6. Say what you regrouped, marked done, removed, and left open.",
     "",
     "## Examples",
     "",
-    "- \"organize my scratchpad\"",
-    "- \"cluster the dump\"",
     "- `/organize-scratchpad`",
-    "",
-  ].join("\n");
-}
-
-function renderRulesFromNotesSkill(): string {
-  return [
-    "---",
-    "name: rules-from-scratchpad",
-    "description: >-",
-    "  Reads the thought dump in .cursor/scratchpad.md and drafts Cursor rules for",
-    "  this repo. Use when the user asks to create rules from notes, turn the dump",
-    "  into rules, or mine scratchpad / the thought dump for .cursor/rules.",
-    "disable-model-invocation: true",
-    "---",
-    "",
-    "# Rules from Scratchpad",
-    "",
-    "## When to use",
-    "",
-    "Only when invoked (`/rules-from-scratchpad`) or the human asks to create Cursor rules from the thought dump. Do not invent a ruleset unprompted. Always ask which candidates to keep.",
-    "",
-    "## Instructions",
-    "",
-    "1. Read `.cursor/scratchpad.md` (open items matter; skip done unless relevant).",
-    "2. List existing `.cursor/rules/**/*.mdc`. Ignore `scratchpad.mdc` (dump guard). Do not write `AGENTS.md`, User Rules, or Team Rules — only **project** `.mdc` files.",
-    "3. Split notes into rule-shaped vs not. **Not rules:** one-off tasks, ideas, bugs, reminders, style-guide dumps. Prefer a linter over a style rule.",
-    "4. **Ask before writing.** Show a short numbered list of candidates (only rule-shaped notes). For each: one-line restatement, suggested `kebab-case.mdc` name, and a recommended apply type:",
-    "   - **Always Apply** (`alwaysApply: true`) — rare. Whole-repo agent behavior.",
-    "   - **Apply to Specific Files** (`alwaysApply: false` + `globs`) — matching paths.",
-    "   - **Apply Intelligently** (`alwaysApply: false` + `description`, no globs) — default.",
-    "   - **Apply Manually** (`alwaysApply: false`, no description, no globs) — `@`-mention only.",
-    "   Ask: which of these should become rules? Numbers, \"all\", \"none\", or a tweak (name / apply type) are fine.",
-    "   Use the ask-questions tool if available. Do not create files until they pick.",
-    "5. After they choose, create only those rules with `/create-rule` so frontmatter is valid `.mdc`.",
-    "   - Reference files with `@path` instead of pasting dump text.",
-    "   - Do not overwrite existing rules unless asked. Never overwrite `scratchpad.mdc`.",
-    "   - Do **not** git-exclude these files — they are version-controlled project rules.",
-    "6. Do not empty the dump. Optionally mark only chosen notes as done, preserving `<!--id:...-->` and any `**subject**`.",
-    "7. Tell them what you wrote, the apply type of each, and what stayed as tasks.",
-    "",
-    "## Examples",
-    "",
-    "- `/rules-from-scratchpad`",
-    "- \"create rules from my notes\"",
-    "- \"turn the dump into cursor rules\"",
+    "- \"organize my scratchpad\"",
+    "- \"prune the dump\"",
+    "- \"what can I drop\"",
     "",
   ].join("\n");
 }
@@ -479,7 +430,7 @@ function renderBriefSkill(): string {
     "",
     "## When to use",
     "",
-    "Only when invoked (`/brief-scratchpad`) or the human asks what’s in the thought dump. Do not brief unprompted mid-task. Do not rewrite `.cursor/scratchpad.md`. Regroup → `/organize-scratchpad`. Prune → `/update-scratchpad`.",
+    "Only when invoked (`/brief-scratchpad`) or the human asks what’s in the thought dump. Do not brief unprompted mid-task. Do not rewrite `.cursor/scratchpad.md` — that’s `/organize-scratchpad`.",
     "",
     "## Instructions",
     "",
@@ -497,41 +448,6 @@ function renderBriefSkill(): string {
     "- `/brief-scratchpad`",
     "- \"what’s in the dump\"",
     "- \"brief my scratchpad\"",
-    "",
-  ].join("\n");
-}
-
-function renderUpdateSkill(): string {
-  return [
-    "---",
-    "name: update-scratchpad",
-    "description: >-",
-    "  Prunes the thought dump: drop or mark done, after asking. Does not regroup.",
-    "  Use when the user asks to update, prune, clean out, triage stale notes,",
-    "  or drop scratchpad / dump items.",
-    "disable-model-invocation: true",
-    "---",
-    "",
-    "# Update Scratchpad",
-    "",
-    "## When to use",
-    "",
-    "Only when invoked (`/update-scratchpad`) or the human asks to prune, drop, or mark dump notes done. Do not run unprompted. Read-only overview → `/brief-scratchpad`. Regroup/cluster without deleting → `/organize-scratchpad`.",
-    "",
-    "## Instructions",
-    "",
-    "1. Read `.cursor/scratchpad.md`. List open notes by **subject** (or first line if none) — not full bodies.",
-    "2. Flag droppable or done: shipped, duplicates, empty rambles, finished one-offs. Notes that belong in a rule → mention `/rules-from-scratchpad`, do not convert here.",
-    "3. **Ask before changing the file.** Numbered list: keep / mark done / delete. They pick numbers, \"delete all flagged\", or \"none\".",
-    "4. After they pick, apply **only** those keep/done/delete actions. Do not reorder or rewrite remaining notes. Keep `# Scratchpad`, Open/Done, `#### <!--id:...-->`, optional `**subject**`, ids on keepers.",
-    "5. Do not invent new notes. Do not turn this into a project plan.",
-    "6. Say what you removed, marked done, and left open.",
-    "",
-    "## Examples",
-    "",
-    "- `/update-scratchpad`",
-    "- \"what can I drop from the dump\"",
-    "- \"prune my scratchpad\"",
     "",
   ].join("\n");
 }
@@ -571,6 +487,12 @@ function toNoteBlock(item: InboxItem): string {
 
 function renderFooter(updatedAt: string): string {
   return `_Last synced: ${updatedAt} by scratchpad_`;
+}
+
+async function removeLegacySkillDirs(root: string): Promise<void> {
+  for (const rel of LEGACY_SKILL_DIRS) {
+    await fs.rm(path.join(root, rel), { recursive: true, force: true });
+  }
 }
 
 async function seedFileIfMissing(filePath: string, contents: string): Promise<void> {

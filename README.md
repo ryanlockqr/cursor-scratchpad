@@ -14,12 +14,10 @@ Open the Scratchpad icon in the activity bar.
 | You do | What happens |
 | --- | --- |
 | Type or paste a note, press **Enter** | Adds it to the thought dump (`Shift+Enter` for a new line). Optional subject is stored as bold markdown |
-| Click a note | Opens it in a tab to edit (list truncates long ones) |
+| Click a note | Opens it in a tab to edit (list shows subject only) |
 | Remove | Drop it |
-| `/organize-scratchpad` | Regroup / cluster / add subjects — does not delete |
+| `/organize-scratchpad` | Regroup, add subjects, prune or mark done — asks first |
 | `/brief-scratchpad` | Short briefing — no rewrite |
-| `/update-scratchpad` | Prune or mark done — asks first |
-| `/rules-from-scratchpad` | Pick notes to turn into project rules |
 
 Command Palette: Quick Dump, Clear Dump.
 
@@ -29,12 +27,10 @@ Command Palette: Quick Dump, Clear Dump.
 | --- | --- | --- |
 | `.cursor/scratchpad.md` | Thought dump | Hidden in explorer; off git |
 | `.cursor/rules/scratchpad.mdc` | Don’t chase the thought dump | Visible; off git |
-| `.cursor/skills/organize-scratchpad/SKILL.md` | Regroup the dump | Visible; off git |
+| `.cursor/skills/organize-scratchpad/SKILL.md` | Organize / prune the dump | Visible; off git |
 | `.cursor/skills/brief-scratchpad/SKILL.md` | Brief the dump | Visible; off git |
-| `.cursor/skills/update-scratchpad/SKILL.md` | Prune the dump | Visible; off git |
-| `.cursor/skills/rules-from-scratchpad/SKILL.md` | Draft repo rules from notes | Visible; off git |
 
-Written when you open a folder with the extension. Listed in `.git/info/exclude`, not `.gitignore`. Rules you create from notes are normal project files and can be committed.
+Written when you open a folder with the extension. Listed in `.git/info/exclude`, not `.gitignore`.
 
 ## Contributing
 

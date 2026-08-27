@@ -583,7 +583,6 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
 
     .item-subject {
       font-weight: 700;
-      margin-bottom: 4px;
     }
 
     .actions {
@@ -749,30 +748,21 @@ export class ScratchpadWebviewProvider implements vscode.WebviewViewProvider, vs
       inboxEl.innerHTML = state.inbox.map(renderItem).join("");
     }
 
-    function previewText(text) {
-      const lines = String(text).split("\\n");
-      let preview = lines.slice(0, 4).join("\\n");
-      if (preview.length > 180) {
-        preview = preview.slice(0, 180);
+    function listLabel(item) {
+      const subject = String(item.subject || "").trim();
+      if (subject) {
+        return subject;
       }
-      if (preview.length < String(text).length) {
-        preview += "…";
-      }
-      return preview;
+      const first = String(item.text || "").split("\\n")[0].trim();
+      return first || "Note";
     }
 
     function renderItem(item) {
-      const subject = String(item.subject || "");
-      const preview = previewText(item.text);
-      const titleHtml = subject
-        ? '<div class="item-subject">' + escapeHtml(subject) + '</div>'
-        : "";
-      const bodyHtml = preview
-        ? '<div>' + escapeHtml(preview) + '</div>'
-        : "";
+      const label = listLabel(item);
+      const hasSubject = Boolean(String(item.subject || "").trim());
       return (
         '<div class="item" data-id="' + escapeAttr(item.id) + '">' +
-          '<div class="text">' + titleHtml + bodyHtml + '</div>' +
+          '<div class="text' + (hasSubject ? " item-subject" : "") + '">' + escapeHtml(label) + '</div>' +
           '<div class="actions">' +
             '<button class="ghost" type="button" data-action="remove" data-id="' + escapeAttr(item.id) + '">Remove</button>' +
           '</div>' +
