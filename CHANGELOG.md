@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.11] - 2026-08-27
+
+- Sidebar list shows subject only (body opens in the note tab)
+- Skills: only `/brief-scratchpad` and `/organize-scratchpad` (organize includes prune; drop update + rules-from)
+
 ## [0.1.10] - 2026-08-24
 
 - Optional note subject, shown bold in the dump and the sidebar

@@ -2,7 +2,7 @@
   "name": "scratchpad",
   "displayName": "Cursor Scratchpad",
   "description": "A thought dump for Cursor. Catch ideas mid-task, revisit later; the agent can read them too.",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "publisher": "ryanlockqr",
   "license": "MIT",
   "icon": "media/icon.png",
